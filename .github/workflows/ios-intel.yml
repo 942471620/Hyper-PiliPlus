@@ -1,0 +1,48 @@
+
+Enter file contents here
+name: Build iOS (intel)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-26-intel
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select newest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Setup flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+
+      - name: Set and Extract version
+        shell: pwsh
+        run: lib/scripts/build.ps1
+
+      - name: Apply Patch
+        shell: pwsh
+        run: lib/scripts/patch.ps1 iOS
+
+      - name: Build iOS
+        run: |
+          flutter build ios --release --no-codesign --dart-define-from-file=pili_release.json --no-pub
+          ln -sf ./build/ios/iphoneos Payload
+          find Payload/Runner.app/Frameworks -type d -name '*.framework' -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \;
+          zip -r9 "PiliPlus_ios_${version}.ipa" Payload/Runner.app
+
+      - name: Upload ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: PiliPlus_ios_*.ipa
+          if-no-files-found: error
